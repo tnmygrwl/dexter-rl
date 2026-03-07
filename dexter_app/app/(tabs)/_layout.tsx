@@ -5,40 +5,43 @@ import { StyleSheet } from 'react-native';
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
+import { SessionProvider } from '@/context/session-context';
 
 export default function TabLayout() {
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: Colors.dark.amber,
-        tabBarInactiveTintColor: Colors.dark.textMuted,
-        headerShown: false,
-        tabBarButton: HapticTab,
-        tabBarStyle: styles.tabBar,
-        tabBarLabelStyle: styles.tabBarLabel,
-      }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Setup',
-          tabBarIcon: ({ color }) => <IconSymbol size={26} name="magnifyingglass" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="practice"
-        options={{
-          title: 'Practice',
-          tabBarIcon: ({ color }) => <IconSymbol size={26} name="play.circle" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="review"
-        options={{
-          title: 'Review',
-          tabBarIcon: ({ color }) => <IconSymbol size={26} name="chart.bar" color={color} />,
-        }}
-      />
-    </Tabs>
+    <SessionProvider>
+      <Tabs
+        screenOptions={{
+          tabBarActiveTintColor: Colors.dark.amber,
+          tabBarInactiveTintColor: Colors.dark.textMuted,
+          headerShown: false,
+          tabBarButton: HapticTab,
+          tabBarStyle: styles.tabBar,
+          tabBarLabelStyle: styles.tabBarLabel,
+        }}>
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: 'Setup',
+            tabBarIcon: ({ color }) => <IconSymbol size={26} name="magnifyingglass" color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="practice"
+          options={{
+            title: 'Practice',
+            tabBarIcon: ({ color }) => <IconSymbol size={26} name="play.circle" color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="review"
+          options={{
+            title: 'Review',
+            tabBarIcon: ({ color }) => <IconSymbol size={26} name="chart.bar" color={color} />,
+          }}
+        />
+      </Tabs>
+    </SessionProvider>
   );
 }
 

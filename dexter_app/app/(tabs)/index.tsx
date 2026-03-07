@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -10,6 +10,7 @@ import { SongSearch } from '@/components/setup/song-search';
 import { TabPreview } from '@/components/setup/tab-preview';
 import { useSongSearch } from '@/hooks/use-song-search';
 import { useTabData, type TabLoadStage } from '@/hooks/use-tab-data';
+import { useSession } from '@/context/session-context';
 import type { SongSearchResult } from '@/types/tab';
 
 const STAGE_LABELS: Record<TabLoadStage, string> = {
@@ -24,6 +25,13 @@ export default function SetupScreen() {
   const [query, setQuery] = useState('');
   const { results, isLoading: isSearching, error: searchError, search, clear: clearSearch } = useSongSearch();
   const { tabData, stage, error: tabError, loadTab, reset: resetTab } = useTabData();
+  const session = useSession();
+
+  useEffect(() => {
+    if (tabData && stage === 'ready') {
+      session.setTabData(tabData);
+    }
+  }, [tabData, stage]);
 
   const handleQueryChange = (text: string) => {
     setQuery(text);
@@ -39,6 +47,7 @@ export default function SetupScreen() {
 
   const handleBack = () => {
     resetTab();
+    session.resetSession();
     setQuery('');
   };
 
@@ -53,13 +62,11 @@ export default function SetupScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Header */}
         <View style={styles.header}>
           <LedText size="lg" style={styles.logo}>DEXTER</LedText>
           <ThemedText style={styles.subtitle}>Guitar Learning AI</ThemedText>
         </View>
 
-        {/* Search mode */}
         {showSearch && (
           <SongSearch
             query={query}
@@ -71,7 +78,6 @@ export default function SetupScreen() {
           />
         )}
 
-        {/* Loading state */}
         {showLoading && (
           <View style={styles.loadingContainer}>
             <View style={styles.loadingPulse}>
@@ -97,7 +103,6 @@ export default function SetupScreen() {
           </View>
         )}
 
-        {/* Tab preview */}
         {showPreview && (
           <TabPreview
             tabData={tabData}

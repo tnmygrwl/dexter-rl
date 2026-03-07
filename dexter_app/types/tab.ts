@@ -42,3 +42,23 @@ export interface SongSearchResult {
   tabUrl?: string;
   tracks?: { instrument: string; tuning?: string[] }[];
 }
+
+export interface GeminiFeedback {
+  pitchAccuracy: number;
+  timing: number;
+  fingerPosition: number;
+  detectedChord: string | null;
+  expectedChord: string | null;
+  feedback: string;
+}
+
+export interface BarResult {
+  barIndex: number;
+  metrics: {
+    pitchAccuracy: number;
+    timing: number;
+    fingerPosition: number;
+  };
+  coachingNotes: string[];
+  durationMs: number;
+}
