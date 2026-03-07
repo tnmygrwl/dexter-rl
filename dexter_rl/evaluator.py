@@ -15,7 +15,7 @@ Listen to the audio and evaluate:
 
 Return ONLY valid JSON: {{"score": <1-10>, "feedback": "<2 sentence evaluation>"}}"""
 
-MODEL = "gemini-2.5-flash"
+MODEL = "gemini-3-flash-preview"
 
 
 class GeminiEvaluator:
