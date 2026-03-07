@@ -50,6 +50,7 @@ export default function PracticeScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.container}>
         <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+          {/* Bar info + tab notation */}
           <BarHeader
             barIndex={practice.currentBarIndex}
             totalBars={practice.totalBars}
@@ -65,12 +66,15 @@ export default function PracticeScreen() {
 
           <View style={styles.spacer} />
 
-          <View style={styles.middleRow}>
+          {/* Camera feed — full width */}
+          <View style={styles.cameraSection}>
             <CameraFeed isActive={isActive} />
-            <View style={styles.metricsWrapper}>
-              <LiveMetrics metrics={practice.liveMetrics} isActive={isActive} />
-            </View>
           </View>
+
+          <View style={styles.spacer} />
+
+          {/* Live metrics — full width below camera */}
+          <LiveMetrics metrics={practice.liveMetrics} isActive={isActive} />
 
           <View style={styles.spacer} />
 
@@ -140,13 +144,8 @@ const styles = StyleSheet.create({
   spacer: {
     height: 12,
   },
-  middleRow: {
-    flexDirection: 'row',
+  cameraSection: {
     paddingHorizontal: 16,
-    gap: 12,
-  },
-  metricsWrapper: {
-    flex: 1,
   },
   connectingContainer: {
     marginHorizontal: 16,
