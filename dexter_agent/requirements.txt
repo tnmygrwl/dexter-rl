@@ -1,0 +1,4 @@
+livekit-agents[google]~=1.4
+livekit-api~=0.8
+aiohttp~=3.11
+python-dotenv~=1.1

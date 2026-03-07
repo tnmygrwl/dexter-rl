@@ -10,6 +10,20 @@ export const GEMINI_API_KEY =
 export const USE_MOCK_DATA =
   process.env.EXPO_PUBLIC_USE_MOCK_DATA !== 'false';
 
+// ── LiveKit ──────────────────────────────────
+
+export const LIVEKIT_URL =
+  process.env.EXPO_PUBLIC_LIVEKIT_URL ?? '';
+
+export const LIVEKIT_API_KEY =
+  process.env.EXPO_PUBLIC_LIVEKIT_API_KEY ?? '';
+
+export const LIVEKIT_API_SECRET =
+  process.env.EXPO_PUBLIC_LIVEKIT_API_SECRET ?? '';
+
+export const LIVEKIT_TOKEN_URL =
+  process.env.EXPO_PUBLIC_LIVEKIT_TOKEN_URL ?? 'http://localhost:8081/token';
+
 /**
  * Gemini model to use for tab generation / parsing.
  *

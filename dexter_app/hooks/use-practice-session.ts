@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from '@/context/session-context';
-import { GeminiLiveClient } from '@/services/gemini-live';
+import { LiveKitSession } from '@/services/livekit';
+import { fetchLiveKitToken } from '@/services/livekit-token';
 import { dlog } from '@/utils/debug-log';
 import type { BarResult, GeminiFeedback, TabNote } from '@/types/tab';
 
 const TAG = 'Practice';
 
-export type PracticeState = 'idle' | 'playing' | 'saving' | 'done';
+export type PracticeState = 'idle' | 'connecting' | 'playing' | 'saving' | 'done';
 
 export interface LiveMetrics {
   pitchAccuracy: number;
@@ -24,7 +25,7 @@ export function usePracticeSession() {
   const [latestFeedback, setLatestFeedback] = useState<GeminiFeedback | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const clientRef = useRef<GeminiLiveClient | null>(null);
+  const sessionRef = useRef<LiveKitSession | null>(null);
   const feedbackCountRef = useRef(0);
   const metricsAccRef = useRef({ pitch: 0, timing: 0, fingers: 0 });
   const startTimeRef = useRef(0);
@@ -101,20 +102,25 @@ export function usePracticeSession() {
     metricsAccRef.current = { pitch: 0, timing: 0, fingers: 0 };
     coachingNotesRef.current = [];
     startTimeRef.current = Date.now();
+    setState('connecting');
 
     const barCtx = buildBarContext();
     dlog.info(TAG, `Bar context:\n${barCtx}`);
 
     try {
-      const client = new GeminiLiveClient();
-      clientRef.current = client;
-      client.onFeedback(handleFeedback);
+      // Fetch a LiveKit room token
+      dlog.info(TAG, 'Fetching LiveKit token...');
+      const { token } = await fetchLiveKitToken('dexter-practice', 'student');
 
-      dlog.info(TAG, 'Connecting to Gemini Live...');
-      await client.connect(barCtx);
-      dlog.info(TAG, 'Connected! Sending initial bar context...');
+      // Connect to the room (publishes camera + mic tracks automatically)
+      const lkSession = new LiveKitSession();
+      sessionRef.current = lkSession;
+      lkSession.onFeedback(handleFeedback);
 
-      client.sendBarContext(barCtx);
+      dlog.info(TAG, 'Connecting to LiveKit room...');
+      await lkSession.connect(token, barCtx);
+      dlog.info(TAG, 'Connected! Camera + audio publishing.');
+
       setState('playing');
       dlog.info(TAG, 'State → playing');
     } catch (err) {
@@ -142,8 +148,8 @@ export function usePracticeSession() {
 
     dlog.info(TAG, `finishBar() – bar ${currentBarIndex + 1}, ${count} feedbacks, ${duration}ms`);
     addBarResult(result);
-    clientRef.current?.disconnect();
-    clientRef.current = null;
+    sessionRef.current?.disconnect();
+    sessionRef.current = null;
     setState('saving');
   }, [currentBarIndex, addBarResult]);
 
@@ -162,8 +168,8 @@ export function usePracticeSession() {
 
   const retryBar = useCallback(async () => {
     dlog.info(TAG, `retryBar() – bar ${currentBarIndex + 1}`);
-    clientRef.current?.disconnect();
-    clientRef.current = null;
+    sessionRef.current?.disconnect();
+    sessionRef.current = null;
     setState('idle');
     setLiveMetrics(EMPTY_METRICS);
     setLatestFeedback(null);
@@ -172,8 +178,8 @@ export function usePracticeSession() {
   const goToBar = useCallback(
     (index: number) => {
       dlog.info(TAG, `goToBar(${index})`);
-      clientRef.current?.disconnect();
-      clientRef.current = null;
+      sessionRef.current?.disconnect();
+      sessionRef.current = null;
       setCurrentBarIndex(index);
       setState('idle');
       setLiveMetrics(EMPTY_METRICS);
@@ -182,17 +188,10 @@ export function usePracticeSession() {
     [setCurrentBarIndex],
   );
 
-  const sendFrame = useCallback((base64: string) => {
-    clientRef.current?.sendFrame(base64);
-  }, []);
-
-  const sendAudio = useCallback((base64: string) => {
-    clientRef.current?.sendAudio(base64);
-  }, []);
-
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      clientRef.current?.disconnect();
+      sessionRef.current?.disconnect();
     };
   }, []);
 
@@ -211,7 +210,5 @@ export function usePracticeSession() {
     nextBar,
     retryBar,
     goToBar,
-    sendFrame,
-    sendAudio,
   };
 }

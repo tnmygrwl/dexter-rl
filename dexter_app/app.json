@@ -9,7 +9,11 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Dexter uses the camera to analyze your guitar playing technique in real-time.",
+        "NSMicrophoneUsageDescription": "Dexter uses the microphone to analyze your guitar playing audio in real-time."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -39,7 +43,9 @@
           }
         }
       ],
-      "expo-audio"
+      "expo-audio",
+      "@livekit/react-native-expo-plugin",
+      "@config-plugins/react-native-webrtc"
     ],
     "experiments": {
       "typedRoutes": true,

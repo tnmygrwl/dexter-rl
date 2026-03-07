@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { requestRecordingPermissionsAsync, getRecordingPermissionsAsync } from 'expo-audio';
 
 import { Colors, Fonts } from '@/constants/theme';
 import { ThemedText } from '@/components/themed-text';
@@ -16,60 +15,16 @@ import { BarControls } from '@/components/practice/bar-controls';
 import { DebugLog } from '@/components/practice/debug-log';
 import { useSession } from '@/context/session-context';
 import { usePracticeSession } from '@/hooks/use-practice-session';
-import { useCameraStream } from '@/hooks/use-camera-stream';
-import { useAudioStream } from '@/hooks/use-audio-stream';
 import { dlog } from '@/utils/debug-log';
 
 export default function PracticeScreen() {
   const { tabData } = useSession();
-  const [audioGranted, setAudioGranted] = useState(false);
-
   const practice = usePracticeSession();
-
-  const camera = useCameraStream({
-    onFrame: practice.sendFrame,
-    fps: 1,
-  });
-
-  const audio = useAudioStream({
-    onAudioChunk: practice.sendAudio,
-    chunkIntervalMs: 2000,
-  });
-
-  useEffect(() => {
-    getRecordingPermissionsAsync()
-      .then((res) => {
-        setAudioGranted(res.granted);
-        dlog.info('PracticeUI', `Audio permission: ${res.granted ? 'granted' : 'denied'}`);
-      })
-      .catch((err) => dlog.warn('PracticeUI', `Audio perm check failed: ${err}`));
-  }, []);
-
-  useEffect(() => {
-    dlog.info('PracticeUI', `State changed → ${practice.state}`);
-    if (practice.state === 'playing') {
-      camera.startStreaming();
-      if (audioGranted) {
-        audio.startRecording();
-      } else {
-        dlog.warn('PracticeUI', 'Audio not granted, skipping mic recording');
-      }
-    } else {
-      camera.stopStreaming();
-      audio.stopRecording();
-    }
-  }, [practice.state]);
 
   const handleStart = useCallback(async () => {
     dlog.info('PracticeUI', 'Start button pressed');
-    if (!audioGranted) {
-      dlog.info('PracticeUI', 'Requesting audio permission...');
-      const res = await requestRecordingPermissionsAsync();
-      setAudioGranted(res.granted);
-      dlog.info('PracticeUI', `Audio permission result: ${res.granted}`);
-    }
     practice.startBar();
-  }, [audioGranted, practice]);
+  }, [practice]);
 
   if (!tabData) {
     return (
@@ -87,7 +42,8 @@ export default function PracticeScreen() {
     );
   }
 
-  const isPlaying = practice.state === 'playing';
+  const isActive = practice.state === 'playing';
+  const isConnecting = practice.state === 'connecting';
   const isLastBar = practice.currentBarIndex >= practice.totalBars - 1;
 
   return (
@@ -110,16 +66,19 @@ export default function PracticeScreen() {
           <View style={styles.spacer} />
 
           <View style={styles.middleRow}>
-            <CameraFeed
-              cameraRef={camera.cameraRef}
-              isActive={isPlaying}
-            />
+            <CameraFeed isActive={isActive} />
             <View style={styles.metricsWrapper}>
-              <LiveMetrics metrics={practice.liveMetrics} isActive={isPlaying} />
+              <LiveMetrics metrics={practice.liveMetrics} isActive={isActive} />
             </View>
           </View>
 
           <View style={styles.spacer} />
+
+          {isConnecting && (
+            <View style={styles.connectingContainer}>
+              <LedText size="sm">Connecting to LiveKit...</LedText>
+            </View>
+          )}
 
           {practice.error && (
             <View style={styles.errorContainer}>
@@ -131,7 +90,7 @@ export default function PracticeScreen() {
         <CoachingToast feedback={practice.latestFeedback} />
 
         <BarControls
-          state={practice.state}
+          state={practice.state === 'connecting' ? 'idle' : practice.state}
           onStart={handleStart}
           onFinish={practice.finishBar}
           onNext={practice.nextBar}
@@ -188,6 +147,11 @@ const styles = StyleSheet.create({
   },
   metricsWrapper: {
     flex: 1,
+  },
+  connectingContainer: {
+    marginHorizontal: 16,
+    padding: 12,
+    alignItems: 'center',
   },
   errorContainer: {
     marginHorizontal: 16,
