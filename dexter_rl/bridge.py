@@ -1,5 +1,6 @@
 import json
 import asyncio
+import subprocess
 import websockets
 
 
@@ -10,9 +11,15 @@ class ExpoBridge:
         self._client = None
         self._server = None
         self._client_connected = asyncio.Event()
+        self._ngrok_process = None
+        self.tunnel_url = None
 
-    async def start(self):
+    async def start(self, ngrok: bool = False):
+        if self._server is not None:
+            return  # Already started
         self._server = await websockets.serve(self._handler, self.host, self.port)
+        if ngrok:
+            self.tunnel_url = await self._start_ngrok()
 
     async def _handler(self, websocket):
         self._client = websocket
@@ -41,7 +48,32 @@ class ExpoBridge:
             if msg["type"] == "attempt_complete":
                 return msg["audio_base64"]
 
+    async def _start_ngrok(self) -> str:
+        self._ngrok_process = subprocess.Popen(
+            ["ngrok", "http", str(self.port), "--log=stdout", "--log-format=json"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        # Poll the ngrok API for the tunnel URL
+        import urllib.request
+        for _ in range(30):
+            await asyncio.sleep(0.5)
+            try:
+                resp = urllib.request.urlopen("http://127.0.0.1:4040/api/tunnels")
+                data = json.loads(resp.read())
+                for tunnel in data.get("tunnels", []):
+                    url = tunnel.get("public_url", "")
+                    if url.startswith("https://"):
+                        # Convert https:// to wss:// for WebSocket
+                        return "wss://" + url[len("https://"):]
+            except Exception:
+                continue
+        raise RuntimeError("Failed to get ngrok tunnel URL after 15s")
+
     async def stop(self):
+        if self._ngrok_process:
+            self._ngrok_process.terminate()
+            self._ngrok_process = None
         if self._server:
             self._server.close()
             await self._server.wait_closed()

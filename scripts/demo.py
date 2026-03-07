@@ -114,16 +114,26 @@ async def run_demo():
         "info": info,
     }
 
+    # Start bridge with ngrok tunnel before setup_state
+    print("[*] Starting WebSocket server + ngrok tunnel ...")
+    await env.bridge.start(ngrok=True)
+    tunnel_url = env.bridge.tunnel_url
+
+    print("=" * 60)
+    if tunnel_url:
+        print(f"  CONNECT URL: {tunnel_url}")
+        print()
+        print("  Share this URL with the Expo app.")
+    else:
+        print("  Local only: ws://0.0.0.0:8765")
+    print("  Open the Dexter app and tap 'Connect'.")
+    print("=" * 60)
+    print()
+
     print("[*] Scraping tabs via Browserbase ...")
     state = await env.setup_state(state)
     tabs = state.get("tabs", "")
     print(f"[ok] Tabs loaded ({len(tabs)} chars).\n")
-
-    print("=" * 60)
-    print("  Waiting for Expo app to connect on ws://0.0.0.0:8765 ...")
-    print("  Open the Dexter app on your phone and tap 'Connect'.")
-    print("=" * 60)
-    print()
 
     # Gemini client for generating coaching tips (acts as the "agent")
     gemini = genai.Client()
