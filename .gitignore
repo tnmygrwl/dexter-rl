@@ -1,3 +1,6 @@
+# RL trajectory data
+trajectories/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
