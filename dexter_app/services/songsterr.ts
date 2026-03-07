@@ -1,6 +1,20 @@
+import { Platform } from 'react-native';
+import { LIVEKIT_TOKEN_URL } from '@/config';
 import type { SongSearchResult } from '@/types/tab';
 
-const BASE_URL = 'https://www.songsterr.com/api';
+/**
+ * On web, Songsterr blocks CORS so we proxy through the local dev server.
+ * On native (RN), we call Songsterr directly (no CORS restrictions).
+ */
+function getBaseUrl(): string {
+  if (Platform.OS === 'web') {
+    // Derive proxy base from the token server URL (same host, different path)
+    const tokenUrl = LIVEKIT_TOKEN_URL || 'http://localhost:8081/token';
+    const origin = tokenUrl.replace(/\/token$/, '');
+    return `${origin}/api/songsterr`;
+  }
+  return 'https://www.songsterr.com/api';
+}
 
 interface SongsterrTrack {
   instrumentId: number;
@@ -42,7 +56,6 @@ export interface SongsterrRevisionDetail {
   defaultTrack?: number;
 }
 
-/** MIDI note number → note name */
 function midiToNote(midi: number): string {
   const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
   return names[midi % 12];
@@ -61,6 +74,7 @@ function simplifyInstrument(raw: string): string {
 export async function searchSongs(query: string): Promise<SongSearchResult[]> {
   if (!query.trim()) return [];
 
+  const BASE_URL = getBaseUrl();
   const encoded = encodeURIComponent(query.trim());
   const res = await fetch(`${BASE_URL}/songs?pattern=${encoded}`);
 
@@ -86,12 +100,9 @@ export async function searchSongs(query: string): Promise<SongSearchResult[]> {
   });
 }
 
-/**
- * Fetches the latest revision detail for a song, including track tunings,
- * difficulty, tags, and instrument info. This is used as rich context for Gemini.
- */
 export async function fetchSongDetail(songId: number): Promise<SongsterrRevisionDetail> {
-  // Get latest revision ID
+  const BASE_URL = getBaseUrl();
+
   const revisionsRes = await fetch(`${BASE_URL}/meta/${songId}/revisions`);
   if (!revisionsRes.ok) {
     throw new Error(`Failed to fetch revisions: ${revisionsRes.status}`);
@@ -102,7 +113,6 @@ export async function fetchSongDetail(songId: number): Promise<SongsterrRevision
   }
   const latestRevisionId = revisions[0].revisionId;
 
-  // Get full revision detail
   const detailRes = await fetch(`${BASE_URL}/revision/${latestRevisionId}`);
   if (!detailRes.ok) {
     throw new Error(`Failed to fetch revision detail: ${detailRes.status}`);
@@ -111,10 +121,6 @@ export async function fetchSongDetail(songId: number): Promise<SongsterrRevision
   return detailRes.json();
 }
 
-/**
- * Builds a structured text summary of a song from Songsterr API data.
- * This gives Gemini enough context to generate accurate tab data.
- */
 export function buildSongContext(detail: SongsterrRevisionDetail): string {
   const guitarTracks = detail.tracks.filter(
     (t) => t.instrument.toLowerCase().includes('guitar'),

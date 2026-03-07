@@ -22,7 +22,7 @@ export const LIVEKIT_API_SECRET =
   process.env.EXPO_PUBLIC_LIVEKIT_API_SECRET ?? '';
 
 export const LIVEKIT_TOKEN_URL =
-  process.env.EXPO_PUBLIC_LIVEKIT_TOKEN_URL ?? 'http://localhost:8081/token';
+  process.env.EXPO_PUBLIC_LIVEKIT_TOKEN_URL ?? 'http://localhost:8082/token';
 
 /**
  * Gemini model to use for tab generation / parsing.

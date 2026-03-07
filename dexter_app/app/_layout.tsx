@@ -1,10 +1,12 @@
 import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { Platform } from 'react-native';
 import 'react-native-reanimated';
-import { registerGlobals } from '@livekit/react-native';
 
-registerGlobals();
+if (Platform.OS !== 'web') {
+  require('@livekit/react-native').registerGlobals();
+}
 
 const StageDarkTheme = {
   ...DarkTheme,
