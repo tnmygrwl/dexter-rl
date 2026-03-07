@@ -25,13 +25,13 @@ from livekit import rtc
 from livekit.agents import (
     Agent,
     AgentSession,
-    AutoSubscribe,
+    ConversationItemAddedEvent,
     JobContext,
-    WorkerOptions,
+    AgentServer,
     cli,
+    room_io,
 )
-from livekit.agents.multimodal import MultimodalAgent
-from livekit.plugins.google import beta as google_beta
+from livekit.plugins import google
 
 load_dotenv()
 
@@ -145,15 +145,23 @@ Be specific: mention which finger, string, fret. Be encouraging but honest.
 Also respond conversationally with voice to coach the student."""
 
 
+class DexterAgent(Agent):
+    def __init__(self) -> None:
+        super().__init__(instructions=SYSTEM_PROMPT)
+
+
+# RL trajectory logger (module-level so event handlers can access it)
+trajectory = TrajectoryLogger()
+
+server = AgentServer()
+
+
+@server.rtc_session(agent_name="dexter-coach")
 async def entrypoint(ctx: JobContext):
-    logger.info("Agent entrypoint — waiting for participant")
-    await ctx.connect(auto_subscribe=AutoSubscribe.SUBSCRIBE_ALL)
-
-    participant = await ctx.wait_for_participant()
-    logger.info(f"Participant joined: {participant.identity}")
-
-    # RL trajectory logger
+    global trajectory
     trajectory = TrajectoryLogger()
+
+    logger.info("Agent entrypoint — waiting for participant")
 
     logger.info("")
     logger.info("=" * 60)
@@ -162,15 +170,13 @@ async def entrypoint(ctx: JobContext):
     logger.info("=" * 60)
     logger.info("")
 
-    model = google_beta.realtime.RealtimeModel(
-        model="gemini-2.5-flash-native-audio-preview-12-2025",
-        voice="Puck",
-        system_instructions=SYSTEM_PROMPT,
-        temperature=0.4,
+    session = AgentSession(
+        llm=google.realtime.RealtimeModel(
+            model="gemini-2.5-flash-native-audio-preview-12-2025",
+            voice="Puck",
+            temperature=0.4,
+        ),
     )
-
-    agent = MultimodalAgent(model=model)
-    session = await agent.start(ctx.room, participant)
 
     # Listen for data messages from the client (bar context updates)
     @ctx.room.on("data_received")
@@ -181,24 +187,23 @@ async def entrypoint(ctx: JobContext):
                 bar_text = msg.get("data", "")
                 logger.info(f"Bar context update: {bar_text[:100]}")
                 trajectory.set_bar_context(bar_text)
-                session.conversation.item.create(
-                    llm=model,
-                    message=rtc.ChatMessage(
-                        role="user",
-                        content=f"[BAR UPDATE] {bar_text}",
-                    ),
-                )
-                session.conversation.item.create(
-                    llm=model,
-                    message=rtc.ChatMessage(role="user", content="Please analyze what you see and hear now."),
+                session.generate_reply(
+                    instructions=f"[BAR UPDATE] {bar_text}. Please analyze what you see and hear now."
                 )
         except Exception as e:
             logger.warning(f"Data message parse error: {e}")
 
     # Forward Gemini text responses as structured data to the client
     # AND log to RL trajectory
-    @session.on("agent_speech_committed")
-    def on_speech(text: str):
+    @session.on("conversation_item_added")
+    def on_conversation_item(event: ConversationItemAddedEvent):
+        if event.item.role != "assistant":
+            return
+
+        text = event.item.text_content
+        if not text:
+            return
+
         feedback = try_parse_feedback(text)
         if feedback:
             # Send to Expo app
@@ -227,6 +232,18 @@ async def entrypoint(ctx: JobContext):
             logger.info("")
             trajectory.save()
 
+    await session.start(
+        room=ctx.room,
+        agent=DexterAgent(),
+        room_options=room_io.RoomOptions(
+            video_input=True,
+        ),
+    )
+
+    await session.generate_reply(
+        instructions="Greet the student warmly. Tell them you're Dexter, their guitar coach, and ask what they'd like to practice today."
+    )
+
 
 def try_parse_feedback(text: str) -> dict | None:
     """Try to extract a JSON feedback object from Gemini's response text."""
@@ -246,4 +263,4 @@ def try_parse_feedback(text: str) -> dict | None:
 
 
 if __name__ == "__main__":
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
+    cli.run_app(server)
