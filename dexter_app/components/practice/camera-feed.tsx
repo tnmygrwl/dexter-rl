@@ -30,14 +30,13 @@ export function CameraFeed({ isActive }: CameraFeedProps) {
     try {
       dlog.info(TAG, 'Requesting camera access...');
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: 640, height: 480 },
+        video: { facingMode: 'environment', width: 320, height: 240 },
         audio: false,
       });
       streamRef.current = stream;
       setHasPermission(true);
       dlog.info(TAG, 'Camera stream acquired');
 
-      // Attach to video element after render
       requestAnimationFrame(() => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -60,22 +59,19 @@ export function CameraFeed({ isActive }: CameraFeedProps) {
     }
   }
 
-  // Web: render a real <video> element
   if (Platform.OS === 'web') {
     if (!isActive) {
       return (
         <View style={styles.container}>
-          <ThemedText style={styles.offText}>CAMERA OFF</ThemedText>
-          <ThemedText style={styles.subText}>Tap Start to begin</ThemedText>
+          <ThemedText style={styles.offText}>CAM</ThemedText>
         </View>
       );
     }
 
     if (hasPermission === false) {
       return (
-        <View style={styles.container}>
-          <ThemedText style={styles.errorText}>Camera blocked</ThemedText>
-          <ThemedText style={styles.subText}>Allow camera access in browser</ThemedText>
+        <View style={[styles.container, styles.activeBorder]}>
+          <ThemedText style={styles.errorText}>No cam</ThemedText>
         </View>
       );
     }
@@ -84,7 +80,6 @@ export function CameraFeed({ isActive }: CameraFeedProps) {
       <View style={[styles.container, styles.activeBorder]}>
         <View style={styles.recordingBadge}>
           <View style={styles.recordingDot} />
-          <ThemedText style={styles.liveLabel}>LIVE</ThemedText>
         </View>
         {/* @ts-ignore — RNW supports native HTML elements */}
         <video
@@ -96,7 +91,7 @@ export function CameraFeed({ isActive }: CameraFeedProps) {
             width: '100%',
             height: '100%',
             objectFit: 'cover',
-            borderRadius: 10,
+            borderRadius: 8,
             transform: 'scaleX(-1)',
           }}
         />
@@ -104,49 +99,33 @@ export function CameraFeed({ isActive }: CameraFeedProps) {
     );
   }
 
-  // Native: placeholder (LiveKit handles tracks)
+  // Native fallback
   return (
     <View style={[styles.container, isActive && styles.activeBorder]}>
-      {isActive ? (
-        <View style={styles.liveContainer}>
-          <View style={styles.recordingDot} />
-          <ThemedText style={styles.liveText}>CAMERA ON</ThemedText>
-          <ThemedText style={styles.subText}>Streaming to AI</ThemedText>
-        </View>
-      ) : (
-        <ThemedText style={styles.offText}>CAM OFF</ThemedText>
-      )}
+      <ThemedText style={styles.offText}>{isActive ? 'LIVE' : 'CAM'}</ThemedText>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    width: '100%' as any,
-    aspectRatio: 4 / 3,
-    borderRadius: 12,
+    width: 140,
+    height: 105,
+    borderRadius: 8,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: Colors.dark.border,
     backgroundColor: Colors.dark.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
   },
   activeBorder: {
     borderColor: Colors.dark.green,
   },
   recordingBadge: {
     position: 'absolute',
-    top: 8,
-    left: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    top: 4,
+    right: 4,
     zIndex: 10,
   },
   recordingDot: {
@@ -155,36 +134,15 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: Colors.dark.red,
   },
-  liveLabel: {
-    color: Colors.dark.red,
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  liveContainer: {
-    alignItems: 'center',
-    gap: 6,
-  },
-  liveText: {
-    color: Colors.dark.green,
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  subText: {
-    color: Colors.dark.textMuted,
-    fontSize: 10,
-    marginTop: 2,
-  },
   offText: {
     color: Colors.dark.textMuted,
-    fontSize: 12,
+    fontSize: 10,
     letterSpacing: 1,
     fontWeight: '600',
   },
   errorText: {
     color: Colors.dark.red,
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '600',
   },
 });

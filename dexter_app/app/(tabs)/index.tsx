@@ -11,6 +11,7 @@ import { TabPreview } from '@/components/setup/tab-preview';
 import { useSongSearch } from '@/hooks/use-song-search';
 import { useTabData, type TabLoadStage } from '@/hooks/use-tab-data';
 import { useSession } from '@/context/session-context';
+import { SMOKE_ON_THE_WATER } from '@/data/smoke-on-the-water';
 import type { SongSearchResult } from '@/types/tab';
 
 const STAGE_LABELS: Record<TabLoadStage, string> = {
@@ -20,6 +21,16 @@ const STAGE_LABELS: Record<TabLoadStage, string> = {
   ready: '',
   error: '',
 };
+
+const PRELOADED_RESULTS: SongSearchResult[] = [
+  {
+    id: -1,
+    title: 'Smoke On The Water',
+    artist: 'Deep Purple',
+    artistId: 0,
+    tracks: [{ instrument: 'Guitar' }],
+  },
+];
 
 export default function SetupScreen() {
   const [query, setQuery] = useState('');
@@ -42,6 +53,13 @@ export default function SetupScreen() {
   const handleSelectSong = (song: SongSearchResult) => {
     clearSearch();
     setQuery('');
+
+    // Preloaded Smoke on the Water — load hardcoded data directly
+    if (song.id === -1) {
+      session.setTabData(SMOKE_ON_THE_WATER);
+      return;
+    }
+
     loadTab(song);
   };
 
@@ -53,7 +71,8 @@ export default function SetupScreen() {
 
   const showSearch = stage === 'idle' || stage === 'error';
   const showLoading = stage === 'fetching' || stage === 'generating';
-  const showPreview = stage === 'ready' && tabData;
+  const showPreview = (stage === 'ready' && tabData) || session.tabData;
+  const displayTabData = tabData ?? session.tabData;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -71,7 +90,7 @@ export default function SetupScreen() {
           <SongSearch
             query={query}
             onQueryChange={handleQueryChange}
-            results={results}
+            results={results.length > 0 ? results : (query.length === 0 ? PRELOADED_RESULTS : [])}
             isLoading={isSearching}
             error={searchError || tabError}
             onSelectSong={handleSelectSong}
@@ -103,9 +122,9 @@ export default function SetupScreen() {
           </View>
         )}
 
-        {showPreview && (
+        {showPreview && displayTabData && (
           <TabPreview
-            tabData={tabData}
+            tabData={displayTabData}
             onBack={handleBack}
             onStartPractice={() => router.push('/practice' as never)}
           />

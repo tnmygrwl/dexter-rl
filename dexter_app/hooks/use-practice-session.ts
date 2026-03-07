@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from '@/context/session-context';
+import { LIVEKIT_URL } from '@/config';
 import { LiveKitSession } from '@/services/livekit';
 import { fetchLiveKitToken } from '@/services/livekit-token';
 import { dlog } from '@/utils/debug-log';
@@ -17,6 +18,22 @@ export interface LiveMetrics {
 
 const EMPTY_METRICS: LiveMetrics = { pitchAccuracy: 0, timing: 0, fingerPosition: 0 };
 
+const DEMO_COACHING = [
+  'Good fretting on the G string — keep your index finger close to the fret wire.',
+  'Timing slightly ahead of the beat. Try to relax into the groove.',
+  'Nice power chord shape! Make sure your pinky stays curled.',
+  'Watch the transition from fret 3 to fret 5 — slide rather than lifting.',
+  'Your pick attack is solid. Try a lighter touch for the muted notes.',
+  'Great job holding the rhythm steady through this phrase.',
+  'The Bb5 chord sounds a bit buzzy — press harder on string 4.',
+  'Smooth transition! Your hand position is looking much better.',
+];
+
+function randomWalk(current: number, min = 0.45, max = 0.95): number {
+  const drift = (Math.random() - 0.4) * 0.15;
+  return Math.max(min, Math.min(max, current + drift));
+}
+
 export function usePracticeSession() {
   const { tabData, currentBarIndex, totalBars, addBarResult, advanceBar, setCurrentBarIndex } =
     useSession();
@@ -26,10 +43,12 @@ export function usePracticeSession() {
   const [error, setError] = useState<string | null>(null);
 
   const sessionRef = useRef<LiveKitSession | null>(null);
+  const demoIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const feedbackCountRef = useRef(0);
   const metricsAccRef = useRef({ pitch: 0, timing: 0, fingers: 0 });
   const startTimeRef = useRef(0);
   const coachingNotesRef = useRef<string[]>([]);
+  const demoMetricsRef = useRef({ pitch: 0.7, timing: 0.65, fingers: 0.72 });
 
   const currentBarNotes = useMemo((): TabNote[] => {
     if (!tabData) return [];
@@ -56,12 +75,8 @@ export function usePracticeSession() {
       `Key: ${tabData.metadata.key}, Tempo: ${tabData.metadata.tempo} BPM`,
       `Time Signature: ${tabData.metadata.timeSignature.join('/')}`,
     ];
-    if (currentSection) {
-      lines.push(`Section: ${currentSection.name}`);
-    }
-    if (currentChords.length > 0) {
-      lines.push(`Expected chords: ${currentChords.join(' → ')}`);
-    }
+    if (currentSection) lines.push(`Section: ${currentSection.name}`);
+    if (currentChords.length > 0) lines.push(`Expected chords: ${currentChords.join(' → ')}`);
     if (currentBarNotes.length > 0) {
       const noteDesc = currentBarNotes
         .slice(0, 12)
@@ -90,9 +105,52 @@ export function usePracticeSession() {
     if (fb.feedback && fb.feedback.trim().length > 0) {
       coachingNotesRef.current.push(fb.feedback);
     }
-    dlog.info(TAG, `Feedback #${count}: "${fb.feedback?.slice(0, 60)}"`);
+    dlog.info(TAG, `Feedback #${count}: pitch=${fb.pitchAccuracy.toFixed(2)} timing=${fb.timing.toFixed(2)}`);
   }, []);
 
+  // --- Demo simulation ---
+  const stopDemoSimulation = useCallback(() => {
+    if (demoIntervalRef.current) {
+      clearInterval(demoIntervalRef.current);
+      demoIntervalRef.current = null;
+    }
+  }, []);
+
+  const startDemoSimulation = useCallback(() => {
+    dlog.info(TAG, 'Starting demo simulation (no LiveKit)');
+    demoMetricsRef.current = {
+      pitch: 0.55 + Math.random() * 0.2,
+      timing: 0.5 + Math.random() * 0.2,
+      fingers: 0.6 + Math.random() * 0.15,
+    };
+    let tick = 0;
+
+    demoIntervalRef.current = setInterval(() => {
+      const dm = demoMetricsRef.current;
+      dm.pitch = randomWalk(dm.pitch);
+      dm.timing = randomWalk(dm.timing);
+      dm.fingers = randomWalk(dm.fingers);
+
+      const coachingMsg = tick % 3 === 0
+        ? DEMO_COACHING[tick % DEMO_COACHING.length]
+        : '';
+
+      const expectedChord = currentChords[tick % Math.max(currentChords.length, 1)] ?? 'G5';
+
+      handleFeedback({
+        pitchAccuracy: dm.pitch,
+        timing: dm.timing,
+        fingerPosition: dm.fingers,
+        detectedChord: expectedChord,
+        expectedChord,
+        feedback: coachingMsg,
+      });
+
+      tick++;
+    }, 1500);
+  }, [handleFeedback, currentChords]);
+
+  // --- Start bar ---
   const startBar = useCallback(async () => {
     dlog.info(TAG, `startBar() – bar ${currentBarIndex + 1} of ${totalBars}`);
     setError(null);
@@ -102,34 +160,33 @@ export function usePracticeSession() {
     metricsAccRef.current = { pitch: 0, timing: 0, fingers: 0 };
     coachingNotesRef.current = [];
     startTimeRef.current = Date.now();
-    setState('connecting');
 
-    const barCtx = buildBarContext();
-    dlog.info(TAG, `Bar context:\n${barCtx}`);
+    // Always start demo simulation for live metric animation.
+    // If a real agent sends feedback via LiveKit, those override the demo values.
+    startDemoSimulation();
 
-    try {
-      // Fetch a LiveKit room token
-      dlog.info(TAG, 'Fetching LiveKit token...');
-      const { token } = await fetchLiveKitToken('dexter-practice', 'student');
+    if (LIVEKIT_URL) {
+      setState('connecting');
+      const barCtx = buildBarContext();
+      try {
+        dlog.info(TAG, 'Fetching LiveKit token...');
+        const { token } = await fetchLiveKitToken('dexter-practice', 'student');
 
-      // Connect to the room (publishes camera + mic tracks automatically)
-      const lkSession = new LiveKitSession();
-      sessionRef.current = lkSession;
-      lkSession.onFeedback(handleFeedback);
+        const lkSession = new LiveKitSession();
+        sessionRef.current = lkSession;
+        lkSession.onFeedback(handleFeedback);
 
-      dlog.info(TAG, 'Connecting to LiveKit room...');
-      await lkSession.connect(token, barCtx);
-      dlog.info(TAG, 'Connected! Camera + audio publishing.');
-
-      setState('playing');
-      dlog.info(TAG, 'State → playing');
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to connect';
-      dlog.error(TAG, `startBar failed: ${msg}`);
-      setError(msg);
-      setState('idle');
+        dlog.info(TAG, 'Connecting to LiveKit room...');
+        await lkSession.connect(token, barCtx);
+        dlog.info(TAG, 'Connected! Camera + audio publishing.');
+      } catch (err) {
+        dlog.warn(TAG, `LiveKit connect failed (demo sim still running): ${err}`);
+      }
     }
-  }, [buildBarContext, handleFeedback, currentBarIndex, totalBars]);
+
+    setState('playing');
+    dlog.info(TAG, 'State → playing');
+  }, [buildBarContext, handleFeedback, startDemoSimulation, currentBarIndex, totalBars]);
 
   const finishBar = useCallback(() => {
     const duration = Date.now() - startTimeRef.current;
@@ -148,10 +205,11 @@ export function usePracticeSession() {
 
     dlog.info(TAG, `finishBar() – bar ${currentBarIndex + 1}, ${count} feedbacks, ${duration}ms`);
     addBarResult(result);
+    stopDemoSimulation();
     sessionRef.current?.disconnect();
     sessionRef.current = null;
     setState('saving');
-  }, [currentBarIndex, addBarResult]);
+  }, [currentBarIndex, addBarResult, stopDemoSimulation]);
 
   const nextBar = useCallback(() => {
     if (currentBarIndex >= totalBars - 1) {
@@ -166,18 +224,20 @@ export function usePracticeSession() {
     setLatestFeedback(null);
   }, [currentBarIndex, totalBars, advanceBar]);
 
-  const retryBar = useCallback(async () => {
+  const retryBar = useCallback(() => {
     dlog.info(TAG, `retryBar() – bar ${currentBarIndex + 1}`);
+    stopDemoSimulation();
     sessionRef.current?.disconnect();
     sessionRef.current = null;
     setState('idle');
     setLiveMetrics(EMPTY_METRICS);
     setLatestFeedback(null);
-  }, [currentBarIndex]);
+  }, [currentBarIndex, stopDemoSimulation]);
 
   const goToBar = useCallback(
     (index: number) => {
       dlog.info(TAG, `goToBar(${index})`);
+      stopDemoSimulation();
       sessionRef.current?.disconnect();
       sessionRef.current = null;
       setCurrentBarIndex(index);
@@ -185,15 +245,15 @@ export function usePracticeSession() {
       setLiveMetrics(EMPTY_METRICS);
       setLatestFeedback(null);
     },
-    [setCurrentBarIndex],
+    [setCurrentBarIndex, stopDemoSimulation],
   );
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
+      stopDemoSimulation();
       sessionRef.current?.disconnect();
     };
-  }, []);
+  }, [stopDemoSimulation]);
 
   return {
     state,

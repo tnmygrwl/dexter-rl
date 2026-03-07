@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Colors, Fonts } from '@/constants/theme';
@@ -49,8 +49,8 @@ export default function PracticeScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.container}>
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-          {/* Bar info + tab notation */}
+        {/* Main content — no scroll needed, everything fits */}
+        <View style={styles.content}>
           <BarHeader
             barIndex={practice.currentBarIndex}
             totalBars={practice.totalBars}
@@ -66,14 +66,7 @@ export default function PracticeScreen() {
 
           <View style={styles.spacer} />
 
-          {/* Camera feed — full width */}
-          <View style={styles.cameraSection}>
-            <CameraFeed isActive={isActive} />
-          </View>
-
-          <View style={styles.spacer} />
-
-          {/* Live metrics — full width below camera */}
+          {/* Live metrics — hero UI, right under tabs */}
           <LiveMetrics metrics={practice.liveMetrics} isActive={isActive} />
 
           <View style={styles.spacer} />
@@ -89,7 +82,12 @@ export default function PracticeScreen() {
               <ThemedText style={styles.errorText}>{practice.error}</ThemedText>
             </View>
           )}
-        </ScrollView>
+        </View>
+
+        {/* Camera PiP — floating in bottom-right corner */}
+        <View style={styles.cameraPip}>
+          <CameraFeed isActive={isActive} />
+        </View>
 
         <CoachingToast feedback={practice.latestFeedback} />
 
@@ -116,11 +114,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  scroll: {
+  content: {
     flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 20,
+    paddingBottom: 8,
   },
   emptyContainer: {
     flex: 1,
@@ -142,10 +138,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   spacer: {
-    height: 12,
+    height: 10,
   },
-  cameraSection: {
-    paddingHorizontal: 16,
+  cameraPip: {
+    position: 'absolute',
+    bottom: 180,
+    right: 16,
+    zIndex: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 8,
   },
   connectingContainer: {
     marginHorizontal: 16,
