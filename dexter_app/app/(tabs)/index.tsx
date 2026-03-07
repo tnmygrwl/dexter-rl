@@ -1,98 +1,180 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
+import { Colors, Fonts } from '@/constants/theme';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { LedText } from '@/components/ui/led-text';
+import { SongSearch } from '@/components/setup/song-search';
+import { TabPreview } from '@/components/setup/tab-preview';
+import { useSongSearch } from '@/hooks/use-song-search';
+import { useTabData, type TabLoadStage } from '@/hooks/use-tab-data';
+import type { SongSearchResult } from '@/types/tab';
 
-export default function HomeScreen() {
+const STAGE_LABELS: Record<TabLoadStage, string> = {
+  idle: '',
+  fetching: 'Fetching song details...',
+  generating: 'Generating tab structure...',
+  ready: '',
+  error: '',
+};
+
+export default function SetupScreen() {
+  const [query, setQuery] = useState('');
+  const { results, isLoading: isSearching, error: searchError, search, clear: clearSearch } = useSongSearch();
+  const { tabData, stage, error: tabError, loadTab, reset: resetTab } = useTabData();
+
+  const handleQueryChange = (text: string) => {
+    setQuery(text);
+    search(text);
+    if (tabData) resetTab();
+  };
+
+  const handleSelectSong = (song: SongSearchResult) => {
+    clearSearch();
+    setQuery('');
+    loadTab(song);
+  };
+
+  const handleBack = () => {
+    resetTab();
+    setQuery('');
+  };
+
+  const showSearch = stage === 'idle' || stage === 'error';
+  const showLoading = stage === 'fetching' || stage === 'generating';
+  const showPreview = stage === 'ready' && tabData;
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <LedText size="lg" style={styles.logo}>DEXTER</LedText>
+          <ThemedText style={styles.subtitle}>Guitar Learning AI</ThemedText>
+        </View>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+        {/* Search mode */}
+        {showSearch && (
+          <SongSearch
+            query={query}
+            onQueryChange={handleQueryChange}
+            results={results}
+            isLoading={isSearching}
+            error={searchError || tabError}
+            onSelectSong={handleSelectSong}
+          />
+        )}
+
+        {/* Loading state */}
+        {showLoading && (
+          <View style={styles.loadingContainer}>
+            <View style={styles.loadingPulse}>
+              <ActivityIndicator size="large" color={Colors.dark.amber} />
+            </View>
+            <LedText size="sm" style={styles.loadingText}>
+              {STAGE_LABELS[stage]}
+            </LedText>
+            <View style={styles.loadingDots}>
+              {['fetching', 'generating', 'ready'].map((s, i) => (
+                <View
+                  key={s}
+                  style={[
+                    styles.dot,
+                    (stage === 'fetching' && i === 0) ||
+                    (stage === 'generating' && i <= 1)
+                      ? styles.dotActive
+                      : styles.dotInactive,
+                  ]}
+                />
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Tab preview */}
+        {showPreview && (
+          <TabPreview
+            tabData={tabData}
+            onBack={handleBack}
+            onStartPractice={() => router.push('/practice' as never)}
+          />
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
+  safeArea: {
+    flex: 1,
+    backgroundColor: Colors.dark.background,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 40,
+  },
+  header: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 20,
     alignItems: 'center',
-    gap: 8,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  logo: {
+    fontSize: 32,
+    letterSpacing: 6,
+    fontFamily: Fonts?.mono,
+    textShadowColor: 'rgba(245, 166, 35, 0.3)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 12,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  subtitle: {
+    fontSize: 13,
+    color: Colors.dark.textMuted,
+    letterSpacing: 2,
+    marginTop: 4,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 80,
+    gap: 16,
+  },
+  loadingPulse: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: Colors.dark.surface,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    textAlign: 'center',
+  },
+  loadingDots: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  dotActive: {
+    backgroundColor: Colors.dark.amber,
+  },
+  dotInactive: {
+    backgroundColor: Colors.dark.border,
   },
 });
