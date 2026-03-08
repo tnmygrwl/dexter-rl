@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useSession } from '@/context/session-context';
-import { GEMINI_API_KEY } from '@/config';
+import { GEMINI_API_KEY, LIVEKIT_TOKEN_URL } from '@/config';
 import { getCoachingFeedback } from '@/services/gemini-coach';
 import { useAudioAnalysis, type AudioMetrics } from '@/hooks/use-audio-analysis';
 import { dlog } from '@/utils/debug-log';
@@ -8,6 +8,9 @@ import type { BarResult, TabNote } from '@/types/tab';
 import type { CameraFeedHandle } from '@/components/practice/camera-feed';
 
 const TAG = 'Practice';
+
+// RL trajectory base URL (same server as token endpoint)
+const RL_BASE = LIVEKIT_TOKEN_URL.replace('/token', '');
 
 export type PracticeState = 'idle' | 'connecting' | 'playing' | 'saving' | 'done';
 
@@ -99,7 +102,25 @@ export function usePracticeSession(cameraRef: RefObject<CameraFeedHandle | null>
         elapsedSeconds: (Date.now() - startTimeRef.current) / 1000,
         frameBase64,
       });
-      if (tip) addCoachingMessage(tip);
+      if (tip) {
+        addCoachingMessage(tip);
+        // Fire-and-forget RL trajectory step
+        const count = feedbackCountRef.current || 1;
+        fetch(`${RL_BASE}/rl/step`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            song: `${tabData.metadata.title} by ${tabData.metadata.artist}`,
+            barContext: `Bar ${currentBarIndex + 1}: ${currentChords.join(' - ')} | ${currentSection?.name ?? ''}`,
+            coachingTip: tip,
+            metrics: {
+              pitchAccuracy: metricsAccRef.current.pitch / count,
+              timing: metricsAccRef.current.timing / count,
+              fingerPosition: metricsAccRef.current.fingers / count,
+            },
+          }),
+        }).catch(() => {});
+      }
     } catch {
       const tip = FALLBACK_TIPS[fallbackIdxRef.current % FALLBACK_TIPS.length];
       fallbackIdxRef.current++;
@@ -192,6 +213,10 @@ export function usePracticeSession(cameraRef: RefObject<CameraFeedHandle | null>
     dlog.info(TAG, `finishBar() – bar ${currentBarIndex + 1}, ${duration}ms, ${coachingMessages.length} tips`);
     addBarResult(result);
     stopListeningRef.current();
+
+    // Signal RL session end (fire-and-forget)
+    fetch(`${RL_BASE}/rl/end`, { method: 'POST' }).catch(() => {});
+
     setState('saving');
   }, [currentBarIndex, addBarResult, coachingMessages]);
 
