@@ -9,8 +9,7 @@ import { StageCard } from '@/components/ui/stage-card';
 import { BarHeader } from '@/components/practice/bar-header';
 import { BarTabView } from '@/components/practice/bar-tab-view';
 import { CameraFeed } from '@/components/practice/camera-feed';
-import { LiveMetrics } from '@/components/practice/live-metrics';
-import { CoachingToast } from '@/components/practice/coaching-toast';
+import { CoachingFeed } from '@/components/practice/coaching-feed';
 import { BarControls } from '@/components/practice/bar-controls';
 import { useSession } from '@/context/session-context';
 import { usePracticeSession } from '@/hooks/use-practice-session';
@@ -46,38 +45,36 @@ export default function PracticeScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.container}>
-        <View style={styles.content}>
-          <BarHeader
-            barIndex={practice.currentBarIndex}
-            totalBars={practice.totalBars}
-            section={practice.currentSection}
-            chords={practice.currentChords}
-            tempo={tabData.metadata.tempo}
-          />
+        <BarHeader
+          barIndex={practice.currentBarIndex}
+          totalBars={practice.totalBars}
+          section={practice.currentSection}
+          chords={practice.currentChords}
+          tempo={tabData.metadata.tempo}
+        />
 
-          <BarTabView
-            notes={practice.currentBarNotes}
-            timeSignature={tabData.metadata.timeSignature}
-          />
+        <BarTabView
+          notes={practice.currentBarNotes}
+          timeSignature={tabData.metadata.timeSignature}
+        />
 
-          <View style={styles.spacer} />
+        <View style={styles.spacer} />
 
-          {/* Coaching text cue — right above the metric bars */}
-          <CoachingToast feedback={practice.latestFeedback} />
+        {/* AI coaching feed — the hero UI */}
+        <CoachingFeed
+          messages={practice.coachingMessages}
+          isActive={isActive}
+        />
 
-          <View style={styles.spacerSmall} />
+        <View style={styles.spacer} />
 
-          {/* Live metrics — hero UI */}
-          <LiveMetrics metrics={practice.liveMetrics} isActive={isActive} />
+        {practice.error && (
+          <View style={styles.errorContainer}>
+            <ThemedText style={styles.errorText}>{practice.error}</ThemedText>
+          </View>
+        )}
 
-          {practice.error && (
-            <View style={styles.errorContainer}>
-              <ThemedText style={styles.errorText}>{practice.error}</ThemedText>
-            </View>
-          )}
-        </View>
-
-        {/* Camera PiP — floating in bottom-right corner */}
+        {/* Camera PiP */}
         <View style={styles.cameraPip}>
           <CameraFeed isActive={isActive} />
         </View>
@@ -103,10 +100,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  content: {
-    flex: 1,
-    paddingBottom: 8,
-  },
   emptyContainer: {
     flex: 1,
     paddingHorizontal: 16,
@@ -127,10 +120,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   spacer: {
-    height: 10,
-  },
-  spacerSmall: {
-    height: 6,
+    height: 8,
   },
   cameraPip: {
     position: 'absolute',
@@ -145,7 +135,6 @@ const styles = StyleSheet.create({
   },
   errorContainer: {
     marginHorizontal: 16,
-    marginTop: 8,
     padding: 12,
     backgroundColor: Colors.dark.surface,
     borderRadius: 8,

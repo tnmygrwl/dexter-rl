@@ -10,10 +10,14 @@ import Animated, {
 import { Colors, Fonts } from '@/constants/theme';
 import { ThemedText } from '@/components/themed-text';
 import { StageCard } from '@/components/ui/stage-card';
-import type { LiveMetrics as LiveMetricsType } from '@/hooks/use-practice-session';
+interface MetricsData {
+  pitchAccuracy: number;
+  timing: number;
+  fingerPosition: number;
+}
 
 interface LiveMetricsProps {
-  metrics: LiveMetricsType;
+  metrics: MetricsData;
   isActive: boolean;
 }
 
