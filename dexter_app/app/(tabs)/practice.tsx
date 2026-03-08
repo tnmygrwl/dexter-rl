@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -8,7 +8,7 @@ import { LedText } from '@/components/ui/led-text';
 import { StageCard } from '@/components/ui/stage-card';
 import { BarHeader } from '@/components/practice/bar-header';
 import { BarTabView } from '@/components/practice/bar-tab-view';
-import { CameraFeed } from '@/components/practice/camera-feed';
+import { CameraFeed, type CameraFeedHandle } from '@/components/practice/camera-feed';
 import { CoachingFeed } from '@/components/practice/coaching-feed';
 import { BarControls } from '@/components/practice/bar-controls';
 import { useSession } from '@/context/session-context';
@@ -17,7 +17,8 @@ import { dlog } from '@/utils/debug-log';
 
 export default function PracticeScreen() {
   const { tabData } = useSession();
-  const practice = usePracticeSession();
+  const cameraRef = useRef<CameraFeedHandle>(null);
+  const practice = usePracticeSession(cameraRef);
 
   const handleStart = useCallback(async () => {
     dlog.info('PracticeUI', 'Start button pressed');
@@ -60,7 +61,6 @@ export default function PracticeScreen() {
 
         <View style={styles.spacer} />
 
-        {/* AI coaching feed — the hero UI */}
         <CoachingFeed
           messages={practice.coachingMessages}
           isActive={isActive}
@@ -74,9 +74,8 @@ export default function PracticeScreen() {
           </View>
         )}
 
-        {/* Camera PiP */}
         <View style={styles.cameraPip}>
-          <CameraFeed isActive={isActive} />
+          <CameraFeed ref={cameraRef} isActive={isActive} />
         </View>
 
         <BarControls

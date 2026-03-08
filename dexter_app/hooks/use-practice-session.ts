@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useSession } from '@/context/session-context';
 import { GEMINI_API_KEY } from '@/config';
 import { getCoachingFeedback } from '@/services/gemini-coach';
 import { useAudioAnalysis, type AudioMetrics } from '@/hooks/use-audio-analysis';
 import { dlog } from '@/utils/debug-log';
 import type { BarResult, TabNote } from '@/types/tab';
+import type { CameraFeedHandle } from '@/components/practice/camera-feed';
 
 const TAG = 'Practice';
 
@@ -21,7 +22,7 @@ const FALLBACK_TIPS = [
   'Great practice session! Repetition builds muscle memory. Keep at it.',
 ];
 
-export function usePracticeSession() {
+export function usePracticeSession(cameraRef: RefObject<CameraFeedHandle | null>) {
   const { tabData, currentBarIndex, totalBars, addBarResult, advanceBar, setCurrentBarIndex } =
     useSession();
   const [state, setState] = useState<PracticeState>('idle');
@@ -69,6 +70,18 @@ export function usePracticeSession() {
       .map((n) => `string${n.string} fret${n.fret}`)
       .join(', ');
 
+    // Capture a frame from the camera for multimodal analysis
+    let frameBase64: string | undefined;
+    try {
+      const frame = cameraRef.current?.captureFrame();
+      if (frame) {
+        frameBase64 = frame;
+        dlog.info(TAG, `Captured frame for Gemini (${Math.round(frame.length / 1024)}KB)`);
+      }
+    } catch {
+      // Camera not available — text-only coaching
+    }
+
     try {
       const tip = await getCoachingFeedback({
         songTitle: tabData.metadata.title,
@@ -84,16 +97,16 @@ export function usePracticeSession() {
         amplitude: am?.amplitude ?? 0,
         isPlaying: am?.isPlaying ?? false,
         elapsedSeconds: (Date.now() - startTimeRef.current) / 1000,
+        frameBase64,
       });
       if (tip) addCoachingMessage(tip);
     } catch {
-      // Fallback on error
       const tip = FALLBACK_TIPS[fallbackIdxRef.current % FALLBACK_TIPS.length];
       fallbackIdxRef.current++;
       addCoachingMessage(tip);
     }
     coachingInFlightRef.current = false;
-  }, [tabData, currentBarIndex, totalBars, currentSection, currentChords, currentBarNotes, addCoachingMessage]);
+  }, [tabData, currentBarIndex, totalBars, currentSection, currentChords, currentBarNotes, addCoachingMessage, cameraRef]);
 
   const handleAudioMetrics = useCallback((am: AudioMetrics) => {
     metricsTickRef.current++;
@@ -106,7 +119,6 @@ export function usePracticeSession() {
       metricsAccRef.current.fingers += am.fingerPosition;
     }
 
-    // Request coaching every ~5 seconds (100 ticks at 50ms)
     coachingTickRef.current++;
     if (coachingTickRef.current % 100 === 0) {
       if (GEMINI_API_KEY && !coachingInFlightRef.current) {
@@ -152,9 +164,9 @@ export function usePracticeSession() {
     await startListeningRef.current();
 
     setState('playing');
-    dlog.info(TAG, `State → playing (Gemini: ${GEMINI_API_KEY ? 'on' : 'fallback'})`);
+    dlog.info(TAG, `State → playing (Gemini multimodal: ${GEMINI_API_KEY ? 'on' : 'fallback'})`);
 
-    // Immediately request first coaching message
+    // First coaching message immediately
     if (GEMINI_API_KEY) {
       requestGeminiCoaching();
     } else {
