@@ -1,12 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withDelay,
-  runOnJS,
-} from 'react-native-reanimated';
 import { Colors } from '@/constants/theme';
 import { ThemedText } from '@/components/themed-text';
 import type { GeminiFeedback } from '@/types/tab';
@@ -16,56 +9,53 @@ interface CoachingToastProps {
 }
 
 export function CoachingToast({ feedback }: CoachingToastProps) {
-  const opacity = useSharedValue(0);
-  const translateY = useSharedValue(20);
-  const currentText = useRef('');
+  const [visible, setVisible] = useState(false);
+  const [text, setText] = useState('');
+  const [chord, setChord] = useState<string | null>(null);
+  const [expectedChord, setExpectedChord] = useState<string | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastMsgRef = useRef('');
 
   useEffect(() => {
-    if (feedback?.feedback && feedback.feedback.trim().length > 0) {
-      currentText.current = feedback.feedback;
-      opacity.value = withTiming(1, { duration: 200 });
-      translateY.value = withTiming(0, { duration: 200 });
+    if (!feedback?.feedback || feedback.feedback.trim().length === 0) return;
+    if (feedback.feedback === lastMsgRef.current) return;
 
-      // Auto-dismiss after 4 seconds
-      opacity.value = withDelay(4000, withTiming(0, { duration: 300 }));
-      translateY.value = withDelay(4000, withTiming(20, { duration: 300 }));
-    }
-  }, [feedback, opacity, translateY]);
+    lastMsgRef.current = feedback.feedback;
+    setText(feedback.feedback);
+    setChord(feedback.detectedChord ?? null);
+    setExpectedChord(feedback.expectedChord ?? null);
+    setVisible(true);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ translateY: translateY.value }],
-  }));
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setVisible(false), 6000);
+  }, [feedback]);
 
-  if (!feedback?.feedback) return null;
+  if (!visible || !text) return null;
 
   return (
-    <Animated.View style={[styles.container, animatedStyle]}>
+    <View style={styles.container}>
       <View style={styles.toast}>
-        {feedback.detectedChord && (
+        {chord && (
           <View style={styles.chordRow}>
             <ThemedText style={styles.chordLabel}>
-              Detected: <ThemedText style={styles.chordValue}>{feedback.detectedChord}</ThemedText>
+              Detected: <ThemedText style={styles.chordValue}>{chord}</ThemedText>
             </ThemedText>
-            {feedback.expectedChord && feedback.detectedChord !== feedback.expectedChord && (
+            {expectedChord && chord !== expectedChord && (
               <ThemedText style={styles.chordExpected}>
-                Expected: {feedback.expectedChord}
+                Expected: {expectedChord}
               </ThemedText>
             )}
           </View>
         )}
-        <ThemedText style={styles.feedbackText}>{currentText.current}</ThemedText>
+        <ThemedText style={styles.feedbackText}>{text}</ThemedText>
       </View>
-    </Animated.View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    position: 'absolute',
-    bottom: 100,
-    left: 16,
-    right: 16,
+    marginHorizontal: 16,
   },
   toast: {
     backgroundColor: Colors.dark.surfaceLight,

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from '@/context/session-context';
+import { GEMINI_API_KEY } from '@/config';
+import { getCoachingTip } from '@/services/gemini-coach';
 import { useAudioAnalysis, type AudioMetrics } from '@/hooks/use-audio-analysis';
 import { dlog } from '@/utils/debug-log';
 import type { BarResult, GeminiFeedback, TabNote } from '@/types/tab';
@@ -16,45 +18,17 @@ export interface LiveMetrics {
 
 const EMPTY_METRICS: LiveMetrics = { pitchAccuracy: 0, timing: 0, fingerPosition: 0 };
 
-const COACHING_MESSAGES: Record<string, string[]> = {
-  pitch: [
-    'Pitch is drifting — check your intonation on that fret.',
-    'Notes sound a bit flat. Press closer to the fret wire.',
-    'Sharp on that last note. Ease up on the bend.',
-  ],
-  timing: [
-    'Rushing slightly — try to lock into the groove.',
-    'Dragging behind the beat. Feel the pulse in your picking hand.',
-    'Timing is uneven. Count in your head: 1-and-2-and-3-and-4.',
-  ],
-  fingers: [
-    'Fret buzz detected — press harder on the string.',
-    'Muted notes coming through. Check finger placement.',
-    'Chord sounds muddy. Arch your fingers more to clear the strings.',
-  ],
-  good: [
-    'Sounding great! Keep that energy.',
-    'Clean notes, solid rhythm. Nice work.',
-    'Great power chord tone. Keep it up!',
-    'Smooth transition between chords.',
-  ],
-};
+const FALLBACK_TIPS = [
+  'Keep your fretting fingers arched — avoid muting adjacent strings.',
+  'Try to relax your picking hand. Tension kills speed.',
+  'Listen to the riff in your head before you play it.',
+  'Focus on clean transitions between power chords.',
+  'Let the open strings ring out fully before moving to the next note.',
+  'Your index finger should stay close to the fret wire.',
+  'Remember: slow is smooth, smooth is fast.',
+  'Good practice! Try to nail the rhythm before worrying about speed.',
+];
 
-function pickCoaching(metrics: LiveMetrics): string {
-  const worst = Math.min(metrics.pitchAccuracy, metrics.timing, metrics.fingerPosition);
-  if (worst > 0.75) {
-    return COACHING_MESSAGES.good[Math.floor(Math.random() * COACHING_MESSAGES.good.length)];
-  }
-  if (metrics.pitchAccuracy === worst) {
-    return COACHING_MESSAGES.pitch[Math.floor(Math.random() * COACHING_MESSAGES.pitch.length)];
-  }
-  if (metrics.timing === worst) {
-    return COACHING_MESSAGES.timing[Math.floor(Math.random() * COACHING_MESSAGES.timing.length)];
-  }
-  return COACHING_MESSAGES.fingers[Math.floor(Math.random() * COACHING_MESSAGES.fingers.length)];
-}
-
-// Exponential moving average for smooth bar updates
 function ema(prev: number, next: number, alpha = 0.15): number {
   return prev * (1 - alpha) + next * alpha;
 }
@@ -73,6 +47,10 @@ export function usePracticeSession() {
   const coachingNotesRef = useRef<string[]>([]);
   const smoothMetricsRef = useRef({ pitch: 0, timing: 0, fingers: 0 });
   const coachingTickRef = useRef(0);
+  const metricsTickRef = useRef(0);
+  const lastDetectedHzRef = useRef(0);
+  const coachingInFlightRef = useRef(false);
+  const fallbackIdxRef = useRef(0);
 
   const currentBarNotes = useMemo((): TabNote[] => {
     if (!tabData) return [];
@@ -91,45 +69,86 @@ export function usePracticeSession() {
   }, [currentSection]);
 
   const tempo = tabData?.metadata.tempo ?? 120;
+  const currentChordsRef = useRef(currentChords);
+  currentChordsRef.current = currentChords;
 
-  // Audio analysis callback — updates metrics from real mic input
-  const handleAudioMetrics = useCallback((am: AudioMetrics) => {
-    if (!am.isPlaying) return; // Only update when there's actual sound
-
+  const showCoaching = useCallback((msg: string) => {
     const sm = smoothMetricsRef.current;
-    sm.pitch = ema(sm.pitch, am.pitchAccuracy);
-    sm.timing = ema(sm.timing, am.timing);
-    sm.fingers = ema(sm.fingers, am.fingerPosition);
-
-    feedbackCountRef.current++;
-    metricsAccRef.current.pitch += am.pitchAccuracy;
-    metricsAccRef.current.timing += am.timing;
-    metricsAccRef.current.fingers += am.fingerPosition;
-
-    setLiveMetrics({
+    const fb: GeminiFeedback = {
       pitchAccuracy: sm.pitch,
       timing: sm.timing,
       fingerPosition: sm.fingers,
-    });
+      detectedChord: null,
+      expectedChord: currentChordsRef.current[0] ?? null,
+      feedback: msg,
+    };
+    setLatestFeedback(fb);
+    coachingNotesRef.current.push(msg);
+  }, []);
 
-    // Generate coaching feedback every ~3 seconds (60 ticks at 50ms)
-    coachingTickRef.current++;
-    if (coachingTickRef.current % 60 === 0) {
-      const msg = pickCoaching({ pitchAccuracy: sm.pitch, timing: sm.timing, fingerPosition: sm.fingers });
-      const expectedChord = currentChords[0] ?? null;
-      const fb: GeminiFeedback = {
+  const requestGeminiCoaching = useCallback(async () => {
+    if (!GEMINI_API_KEY || !tabData || coachingInFlightRef.current) return;
+    coachingInFlightRef.current = true;
+    const sm = smoothMetricsRef.current;
+
+    try {
+      const tip = await getCoachingTip({
+        songTitle: tabData.metadata.title,
+        artist: tabData.metadata.artist,
+        barNumber: currentBarIndex + 1,
+        totalBars,
+        sectionName: currentSection?.name ?? 'Unknown',
+        expectedChords: currentChordsRef.current,
         pitchAccuracy: sm.pitch,
         timing: sm.timing,
         fingerPosition: sm.fingers,
-        detectedChord: am.detectedHz > 0 ? `~${Math.round(am.detectedHz)}Hz` : null,
-        expectedChord,
-        feedback: msg,
-      };
-      setLatestFeedback(fb);
-      coachingNotesRef.current.push(msg);
-      dlog.info(TAG, `Coaching: "${msg}" (pitch=${sm.pitch.toFixed(2)} timing=${sm.timing.toFixed(2)} fingers=${sm.fingers.toFixed(2)})`);
+        detectedHz: lastDetectedHzRef.current,
+      });
+      if (tip) showCoaching(tip);
+    } catch {
+      // Silently fail — fallback tips will cover
     }
-  }, [currentChords]);
+    coachingInFlightRef.current = false;
+  }, [tabData, currentBarIndex, totalBars, currentSection, showCoaching]);
+
+  const handleAudioMetrics = useCallback((am: AudioMetrics) => {
+    metricsTickRef.current++;
+    const sm = smoothMetricsRef.current;
+    lastDetectedHzRef.current = am.detectedHz;
+
+    if (am.isPlaying) {
+      sm.pitch = ema(sm.pitch, am.pitchAccuracy);
+      sm.timing = ema(sm.timing, am.timing);
+      sm.fingers = ema(sm.fingers, am.fingerPosition);
+
+      feedbackCountRef.current++;
+      metricsAccRef.current.pitch += am.pitchAccuracy;
+      metricsAccRef.current.timing += am.timing;
+      metricsAccRef.current.fingers += am.fingerPosition;
+    } else {
+      sm.pitch = ema(sm.pitch, sm.pitch * 0.98, 0.05);
+      sm.timing = ema(sm.timing, sm.timing * 0.98, 0.05);
+      sm.fingers = ema(sm.fingers, sm.fingers * 0.98, 0.05);
+    }
+
+    setLiveMetrics({ pitchAccuracy: sm.pitch, timing: sm.timing, fingerPosition: sm.fingers });
+
+    // Show coaching tips periodically (~every 4 seconds = 80 ticks at 50ms)
+    coachingTickRef.current++;
+    if (coachingTickRef.current % 80 === 0 && am.isPlaying) {
+      if (GEMINI_API_KEY && !coachingInFlightRef.current) {
+        requestGeminiCoaching();
+      } else {
+        const tip = FALLBACK_TIPS[fallbackIdxRef.current % FALLBACK_TIPS.length];
+        fallbackIdxRef.current++;
+        showCoaching(tip);
+      }
+    }
+
+    if (metricsTickRef.current % 40 === 0) {
+      dlog.info(TAG, `Metrics: pitch=${sm.pitch.toFixed(2)} timing=${sm.timing.toFixed(2)} fingers=${sm.fingers.toFixed(2)} amp=${am.amplitude.toFixed(4)} hz=${am.detectedHz.toFixed(0)}`);
+    }
+  }, [requestGeminiCoaching, showCoaching]);
 
   const audioAnalysis = useAudioAnalysis({
     expectedNotes: currentBarNotes,
@@ -137,8 +156,16 @@ export function usePracticeSession() {
     onMetrics: handleAudioMetrics,
   });
 
+  const startListeningRef = useRef(audioAnalysis.startListening);
+  startListeningRef.current = audioAnalysis.startListening;
+  const stopListeningRef = useRef(audioAnalysis.stopListening);
+  stopListeningRef.current = audioAnalysis.stopListening;
+
   const startBar = useCallback(async () => {
     dlog.info(TAG, `startBar() – bar ${currentBarIndex + 1} of ${totalBars}`);
+
+    stopListeningRef.current();
+
     setError(null);
     setLiveMetrics(EMPTY_METRICS);
     setLatestFeedback(null);
@@ -147,14 +174,15 @@ export function usePracticeSession() {
     smoothMetricsRef.current = { pitch: 0.5, timing: 0.5, fingers: 0.5 };
     coachingNotesRef.current = [];
     coachingTickRef.current = 0;
+    metricsTickRef.current = 0;
+    fallbackIdxRef.current = 0;
     startTimeRef.current = Date.now();
 
-    // Start real mic audio analysis
-    audioAnalysis.startListening();
+    await startListeningRef.current();
 
     setState('playing');
-    dlog.info(TAG, 'State → playing (audio analysis active)');
-  }, [audioAnalysis, currentBarIndex, totalBars]);
+    dlog.info(TAG, `State → playing (Gemini coaching: ${GEMINI_API_KEY ? 'enabled' : 'fallback only'})`);
+  }, [currentBarIndex, totalBars]);
 
   const finishBar = useCallback(() => {
     const duration = Date.now() - startTimeRef.current;
@@ -173,9 +201,9 @@ export function usePracticeSession() {
 
     dlog.info(TAG, `finishBar() – bar ${currentBarIndex + 1}, ${count} samples, ${duration}ms`);
     addBarResult(result);
-    audioAnalysis.stopListening();
+    stopListeningRef.current();
     setState('saving');
-  }, [currentBarIndex, addBarResult, audioAnalysis]);
+  }, [currentBarIndex, addBarResult]);
 
   const nextBar = useCallback(() => {
     if (currentBarIndex >= totalBars - 1) {
@@ -192,29 +220,27 @@ export function usePracticeSession() {
 
   const retryBar = useCallback(() => {
     dlog.info(TAG, `retryBar() – bar ${currentBarIndex + 1}`);
-    audioAnalysis.stopListening();
+    stopListeningRef.current();
     setState('idle');
     setLiveMetrics(EMPTY_METRICS);
     setLatestFeedback(null);
-  }, [currentBarIndex, audioAnalysis]);
+  }, [currentBarIndex]);
 
   const goToBar = useCallback(
     (index: number) => {
       dlog.info(TAG, `goToBar(${index})`);
-      audioAnalysis.stopListening();
+      stopListeningRef.current();
       setCurrentBarIndex(index);
       setState('idle');
       setLiveMetrics(EMPTY_METRICS);
       setLatestFeedback(null);
     },
-    [setCurrentBarIndex, audioAnalysis],
+    [setCurrentBarIndex],
   );
 
   useEffect(() => {
-    return () => {
-      audioAnalysis.stopListening();
-    };
-  }, [audioAnalysis]);
+    return () => { stopListeningRef.current(); };
+  }, []);
 
   return {
     state,

@@ -12,7 +12,6 @@ import { CameraFeed } from '@/components/practice/camera-feed';
 import { LiveMetrics } from '@/components/practice/live-metrics';
 import { CoachingToast } from '@/components/practice/coaching-toast';
 import { BarControls } from '@/components/practice/bar-controls';
-import { DebugLog } from '@/components/practice/debug-log';
 import { useSession } from '@/context/session-context';
 import { usePracticeSession } from '@/hooks/use-practice-session';
 import { dlog } from '@/utils/debug-log';
@@ -37,19 +36,16 @@ export default function PracticeScreen() {
             </ThemedText>
           </StageCard>
         </View>
-        <DebugLog />
       </SafeAreaView>
     );
   }
 
   const isActive = practice.state === 'playing';
-  const isConnecting = practice.state === 'connecting';
   const isLastBar = practice.currentBarIndex >= practice.totalBars - 1;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.container}>
-        {/* Main content — no scroll needed, everything fits */}
         <View style={styles.content}>
           <BarHeader
             barIndex={practice.currentBarIndex}
@@ -66,16 +62,13 @@ export default function PracticeScreen() {
 
           <View style={styles.spacer} />
 
-          {/* Live metrics — hero UI, right under tabs */}
+          {/* Coaching text cue — right above the metric bars */}
+          <CoachingToast feedback={practice.latestFeedback} />
+
+          <View style={styles.spacerSmall} />
+
+          {/* Live metrics — hero UI */}
           <LiveMetrics metrics={practice.liveMetrics} isActive={isActive} />
-
-          <View style={styles.spacer} />
-
-          {isConnecting && (
-            <View style={styles.connectingContainer}>
-              <LedText size="sm">Connecting to LiveKit...</LedText>
-            </View>
-          )}
 
           {practice.error && (
             <View style={styles.errorContainer}>
@@ -89,8 +82,6 @@ export default function PracticeScreen() {
           <CameraFeed isActive={isActive} />
         </View>
 
-        <CoachingToast feedback={practice.latestFeedback} />
-
         <BarControls
           state={practice.state === 'connecting' ? 'idle' : practice.state}
           onStart={handleStart}
@@ -99,8 +90,6 @@ export default function PracticeScreen() {
           onRetry={practice.retryBar}
           isLastBar={isLastBar}
         />
-
-        <DebugLog />
       </View>
     </SafeAreaView>
   );
@@ -140,9 +129,12 @@ const styles = StyleSheet.create({
   spacer: {
     height: 10,
   },
+  spacerSmall: {
+    height: 6,
+  },
   cameraPip: {
     position: 'absolute',
-    bottom: 180,
+    bottom: 100,
     right: 16,
     zIndex: 20,
     shadowColor: '#000',
@@ -151,13 +143,9 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 8,
   },
-  connectingContainer: {
-    marginHorizontal: 16,
-    padding: 12,
-    alignItems: 'center',
-  },
   errorContainer: {
     marginHorizontal: 16,
+    marginTop: 8,
     padding: 12,
     backgroundColor: Colors.dark.surface,
     borderRadius: 8,

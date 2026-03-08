@@ -38,13 +38,11 @@ export const GEMINI_MODEL =
   process.env.EXPO_PUBLIC_GEMINI_MODEL ?? 'gemini-2.5-flash';
 
 /**
- * Gemini model to use for Live API (BidiGenerateContent over WebSocket).
- * The Live API only works with specific models.
+ * Gemini model for Live API (BidiGenerateContent over WebSocket).
  *
- * Known working options:
- *   "gemini-2.0-flash-live-001"                         — stable live model
- *   "gemini-2.5-flash-native-audio-preview-12-2025"     — enhanced audio
- *   "gemini-2.0-flash-exp"                              — experimental
+ * Models supporting bidiGenerateContent (verified via ListModels):
+ *   "gemini-2.0-flash-exp-image-generation"  — text responses, recommended
+ *   "gemini-2.5-flash-native-audio-latest"   — audio responses only
  */
 export const GEMINI_LIVE_MODEL =
-  process.env.EXPO_PUBLIC_GEMINI_LIVE_MODEL ?? 'gemini-2.0-flash-live-001';
+  process.env.EXPO_PUBLIC_GEMINI_LIVE_MODEL ?? 'gemini-2.0-flash-exp-image-generation';

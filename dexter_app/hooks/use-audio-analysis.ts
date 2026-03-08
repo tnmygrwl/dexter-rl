@@ -4,7 +4,7 @@ import { dlog } from '@/utils/debug-log';
 import {
   detectPitch,
   getAmplitude,
-  getSpectralClarity,
+  getFingerScore,
   scorePitchAccuracy,
   scoreTimingFromAmplitude,
   getExpectedFrequencies,
@@ -97,8 +97,8 @@ export function useAudioAnalysis({ expectedNotes, tempo, onMetrics }: UseAudioAn
 
         const detectedHz = detectPitch(an, sr);
         const amplitude = getAmplitude(an);
-        const clarity = getSpectralClarity(an);
-        const isPlaying = amplitude > 0.015;
+        const fingerPos = getFingerScore(an, amplitude);
+        const isPlaying = amplitude > 0.005;
 
         // Log amplitude periodically so user can verify mic is working
         logCounter++;
@@ -118,7 +118,7 @@ export function useAudioAnalysis({ expectedNotes, tempo, onMetrics }: UseAudioAn
         const metrics: AudioMetrics = {
           pitchAccuracy: pitchScore,
           timing: timingScore,
-          fingerPosition: isPlaying ? clarity : 0,
+          fingerPosition: fingerPos,
           detectedHz,
           amplitude,
           isPlaying,
