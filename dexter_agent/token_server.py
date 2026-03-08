@@ -16,7 +16,7 @@ import os
 import aiohttp as aiohttp_lib
 from aiohttp import web
 from dotenv import load_dotenv
-from livekit.api import AccessToken, VideoGrants
+from livekit.api import AccessToken, VideoGrants, LiveKitAPI, CreateAgentDispatchRequest
 
 load_dotenv()
 
@@ -59,6 +59,18 @@ async def handle_token(request: web.Request) -> web.Response:
     )
 
     jwt = token.to_jwt()
+
+    # Dispatch the agent to this room so it auto-joins
+    try:
+        lk_url = os.environ.get("LIVEKIT_URL", "")
+        lk = LiveKitAPI(lk_url, API_KEY, API_SECRET)
+        await lk.agent_dispatch.create_dispatch(
+            CreateAgentDispatchRequest(room=room, agent_name="dexter-coach")
+        )
+        await lk.aclose()
+    except Exception as e:
+        print(f"Agent dispatch warning: {e}")
+
     return web.json_response({"token": jwt, "url": os.environ.get("LIVEKIT_URL", "")})
 
 

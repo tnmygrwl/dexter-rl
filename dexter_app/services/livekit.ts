@@ -62,19 +62,19 @@ export class LiveKitSession {
       throw new Error(`LiveKit connection failed: ${msg}`);
     }
 
-    // Publish camera
-    try {
-      this.videoTrack = await createLocalVideoTrack({
-        facingMode: 'environment',
-        resolution: { width: 640, height: 480, frameRate: 5 },
-      });
-      await this.room.localParticipant.publishTrack(this.videoTrack);
-      dlog.info(TAG, 'Camera track published');
-    } catch (err) {
-      dlog.warn(TAG, `Camera publish failed: ${err}`);
+    // Send bar context to the agent via data channel
+    if (barContext) {
+      this.sendData({ type: 'barContext', data: barContext });
     }
 
-    // Publish microphone
+    // Publish camera + mic in background (don't block connect)
+    this.publishTracks();
+  }
+
+  private async publishTracks() {
+    if (!this.room) return;
+    // Publish audio only — CameraFeed component handles video display,
+    // and a single getUserMedia avoids conflicts on some machines
     try {
       this.audioTrack = await createLocalAudioTrack({
         echoCancellation: true,
@@ -84,11 +84,6 @@ export class LiveKitSession {
       dlog.info(TAG, 'Audio track published');
     } catch (err) {
       dlog.warn(TAG, `Audio publish failed: ${err}`);
-    }
-
-    // Send bar context to the agent via data channel
-    if (barContext) {
-      this.sendData({ type: 'barContext', data: barContext });
     }
   }
 
